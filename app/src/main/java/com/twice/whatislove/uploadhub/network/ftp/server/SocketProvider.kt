@@ -1,30 +1,46 @@
-package com.twice.whatislove.uploadhub
+package com.twice.whatislove.uploadhub.network.ftp.server
 
 import java.io.Closeable
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.InetSocketAddress
 
+/**
+ * Abstraction over a listening socket so the server core can be tested and
+ * platform-specific behavior (Android vs JVM) can be swapped easily.
+ */
 interface SocketProvider : Closeable {
     suspend fun open()
     suspend fun accept(): Socket?
     fun listenAddress(): String
 }
 
-class DefaultSocketProvider(private val port: Int = 2121, private val backlog: Int = 50) : SocketProvider {
+/**
+ * Default ServerSocket-based provider.
+ *
+ * Note: accept() is a blocking call on the underlying ServerSocket. It's
+ * invoked from a coroutine with Dispatchers.IO in the Server implementation.
+ */
+class DefaultSocketProvider(
+    private val port: Int = 2121,
+    private val backlog: Int = 50
+) : SocketProvider {
+    @Volatile
     private var serverSocket: ServerSocket? = null
 
     override suspend fun open() {
-        serverSocket = ServerSocket()
-        serverSocket!!.reuseAddress = true
-        serverSocket!!.bind(InetSocketAddress(port), backlog)
+        serverSocket = ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(port), backlog)
+        }
     }
 
     override suspend fun accept(): Socket? {
         val ss = serverSocket ?: return null
         return try {
             ss.accept()
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
+            // If the server socket is closed while blocking in accept, an exception is expected.
             null
         }
     }
@@ -35,6 +51,11 @@ class DefaultSocketProvider(private val port: Int = 2121, private val backlog: I
     }
 
     override fun close() {
-        try { serverSocket?.close() } catch (_: Throwable) {}
+        try {
+            serverSocket?.close()
+        } catch (_: Throwable) {
+        } finally {
+            serverSocket = null
+        }
     }
 }
