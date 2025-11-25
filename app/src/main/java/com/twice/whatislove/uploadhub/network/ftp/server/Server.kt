@@ -1,4 +1,4 @@
-package com.twice.whatislove.uploadhub
+package com.twice.whatislove.uploadhub.network.ftp.server
 
 import kotlinx.coroutines.*
 import java.io.Closeable
@@ -22,7 +22,7 @@ class Server(
             try {
                 acceptLoop()
             } finally {
-                socketProvider.close()
+                try { socketProvider.close() } catch (_: Throwable) {}
             }
         }
         println("FTP server started on ${socketProvider.listenAddress()}")
@@ -30,9 +30,15 @@ class Server(
 
     private suspend fun acceptLoop() {
         while (isActive && running) {
-            val socket = withContext(Dispatchers.IO) {
-                socketProvider.accept()
+            val socket: Socket? = withContext(Dispatchers.IO) {
+                try {
+                    socketProvider.accept()
+                } catch (t: Throwable) {
+                    t.printStackTrace()
+                    null
+                }
             } ?: break
+
             scope.launch {
                 try {
                     ClientHandler(socket, fileSystem).handle()
@@ -48,7 +54,7 @@ class Server(
     fun stop() {
         running = false
         scope.cancel()
-        socketProvider.close()
+        try { socketProvider.close() } catch (_: Throwable) {}
         println("FTP server stopped")
     }
 
