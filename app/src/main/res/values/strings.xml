@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">UploadHub</string>
+    <string name="home">Home</string>
+    <string name="catbox">Catbox</string>
+    <string name="litterbox">Litterbox</string>
+    <string name="ftp">FTP</string>
+    <string name="rclone">Rclone</string>
+    <string name="settings">Settings</string>
+    <string name="about">About</string>
+</resources>
