@@ -1,16 +1,16 @@
-package com.twice.whatislove.uploadhub
+package com.twice.whatislove.uploadhub.network.ftp.server
 
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.Path
 
 interface FileSystemAdapter {
-    fun list(path: Path): List<FileEntry>
-    fun openRead(path: Path): InputStream
-    fun openWrite(path: Path): OutputStream
-    fun exists(path: Path): Boolean
-    fun resolve(path: Path, child: String): Path
-    fun root(): Path
+    fun list(dir: File): List<FileEntry>
+    fun openRead(file: File): InputStream
+    fun openWrite(file: File): OutputStream
+    fun exists(file: File): Boolean
+    fun resolve(dir: File, child: String): File
+    fun root(): File
 }
 
 data class FileEntry(val name: String, val isDirectory: Boolean, val size: Long)
