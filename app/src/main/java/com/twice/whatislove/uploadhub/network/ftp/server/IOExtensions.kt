@@ -1,148 +1,191 @@
-package com.twice.whatislove.uploadhub.network.ftp.server.utils
+package com.twice.whatislove.uploadhub.network.ftp.server
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
-import java.io.Closeable
-import java.io.InputStream
-import java.io.OutputStream
-import kotlin.math.max
-import kotlin.math.min
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.io.File
 
 /**
- * Small collection of IO helper extensions used by the FTP server core.
+ * Foreground Service that hosts the simple FTP server core.
  *
- * Place this file under:
- * app/src/main/java/com/twice/whatislove/uploadhub/network/ftp/server/utils/IOExtensions.kt
+ * - Starts ServerLauncher on service start.
+ * - Keeps the server running in a foreground notification so Android does not kill it.
+ * - Stops the server when the service is destroyed.
+ *
+ * Notes:
+ * - This service is a lightweight skeleton intended for development and local networks.
+ * - Do not expose this server to untrusted networks without adding authentication and TLS.
+ * - Ensure you declare INTERNET and FOREGROUND_SERVICE permissions in AndroidManifest.xml.
  */
+class FtpServerService : Service() {
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-/**
- * Read all bytes from this InputStream in a way that works across Android API levels.
- */
-fun InputStream.readAllBytesSafe(initialBufferSize: Int = 8 * 1024): ByteArray {
-    val buffer = ByteArrayOutputStream(max(initialBufferSize, 1024))
-    this.use { input ->
-        val tmp = ByteArray(8 * 1024)
-        var read: Int
-        while (true) {
-            read = input.read(tmp)
-            if (read <= 0) break
-            buffer.write(tmp, 0, read)
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannelIfNeeded()
+        startForeground(NOTIFICATION_ID, buildNotification(isRunning = false))
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Start the server if not already running
+        val port = intent?.getIntExtra(EXTRA_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
+        val rootDirPath = intent?.getStringExtra(EXTRA_ROOT_DIR)
+        val rootDir = if (!rootDirPath.isNullOrBlank()) {
+            File(rootDirPath).apply { if (!exists()) mkdirs() }
+        } else {
+            // Use app internal files directory by default
+            File(filesDir, "ftp_root").apply { if (!exists()) mkdirs() }
+        }
+
+        serviceScope.launch {
+            try {
+                ServerLauncher.start(port = port, rootDir = rootDir)
+                // Update notification to show running state
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NOTIFICATION_ID, buildNotification(isRunning = true))
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                stopSelf()
+            }
+        }
+
+        // If the system kills the service, recreate it and call onStartCommand again.
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        try {
+            ServerLauncher.stop()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        } finally {
+            serviceScope.coroutineContext.cancel()
+            super.onDestroy()
         }
     }
-    return buffer.toByteArray()
-}
 
-/**
- * Copy from this InputStream to [out] using a buffer.
- *
- * @return total number of bytes copied
- */
-fun InputStream.copyToSafe(out: OutputStream, bufferSize: Int = DEFAULT_BUFFER_SIZE): Long {
-    var bytesCopied = 0L
-    val buffer = ByteArray(max(1, bufferSize))
-    var read: Int
-    while (true) {
-        read = this.read(buffer)
-        if (read <= 0) break
-        out.write(buffer, 0, read)
-        bytesCopied += read
-    }
-    return bytesCopied
-}
+    override fun onBind(intent: Intent?): IBinder? = null
 
-/**
- * Copy with a progress callback invoked periodically with the cumulative bytes copied.
- *
- * The callback is invoked on the calling thread; if used from coroutines, call from Dispatchers.IO.
- */
-fun InputStream.copyToWithProgress(
-    out: OutputStream,
-    bufferSize: Int = DEFAULT_BUFFER_SIZE,
-    progressCallback: ((bytesCopied: Long) -> Unit)? = null,
-    progressIntervalBytes: Long = 64 * 1024L
-): Long {
-    var bytesCopied = 0L
-    val buffer = ByteArray(max(1, bufferSize))
-    var read: Int
-    var nextReport = progressIntervalBytes
-    while (true) {
-        read = this.read(buffer)
-        if (read <= 0) break
-        out.write(buffer, 0, read)
-        bytesCopied += read
-        if (progressCallback != null && bytesCopied >= nextReport) {
-            progressCallback(bytesCopied)
-            nextReport = bytesCopied + progressIntervalBytes
+    private fun createNotificationChannelIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                "FTP Server",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Notification channel for FTP server foreground service"
+            }
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
         }
     }
-    progressCallback?.invoke(bytesCopied)
-    return bytesCopied
-}
 
-/**
- * Suspendable copy that runs on [Dispatchers.IO].
- *
- * Use this from coroutine contexts to avoid blocking the main thread.
- */
-suspend fun InputStream.copyToSuspend(
-    out: OutputStream,
-    bufferSize: Int = DEFAULT_BUFFER_SIZE
-): Long = withContext(Dispatchers.IO) {
-    this@copyToSuspend.copyToSafe(out, bufferSize)
-}
+    private fun buildNotification(isRunning: Boolean): Notification {
+        val title = if (isRunning) "FTP Server running" else "Starting FTP Server"
+        val text = if (isRunning) "Listening on port $DEFAULT_PORT" else "Preparing FTP server"
 
-/**
- * Suspendable readAllBytes that runs on [Dispatchers.IO].
- */
-suspend fun InputStream.readAllBytesSuspend(initialBufferSize: Int = 8 * 1024): ByteArray =
-    withContext(Dispatchers.IO) {
-        this@readAllBytesSuspend.readAllBytesSafe(initialBufferSize)
+        // PendingIntent to open the app when the notification is tapped.
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            launchIntent ?: Intent(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            else
+                PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
     }
 
-/**
- * Write a full byte array to the OutputStream and flush.
- */
-fun OutputStream.writeAll(bytes: ByteArray) {
-    this.use { out ->
-        out.write(bytes)
-        out.flush()
-    }
-}
+    companion object {
+        private const val NOTIFICATION_CHANNEL_ID = "ftp_server_channel"
+        private const val NOTIFICATION_ID = 1001
+        private const val DEFAULT_PORT = 2121
 
-/**
- * Close a Closeable quietly, swallowing exceptions.
- */
-fun Closeable?.closeQuietly() {
-    if (this == null) return
-    try {
-        this.close()
-    } catch (_: Throwable) {
-    }
-}
+        /** Intent extras */
+        const val EXTRA_PORT = "com.twice.whatislove.uploadhub.EXTRA_PORT"
+        const val EXTRA_ROOT_DIR = "com.twice.whatislove.uploadhub.EXTRA_ROOT_DIR"
 
-/**
- * Helper to safely resolve a child path segment into a normalized string path.
- *
- * This is intentionally simple and does not attempt to enforce sandboxing; the
- * FileSystemAdapter implementation should ensure canonicalization and sandboxing.
- */
-fun normalizePathSegment(base: String, child: String): String {
-    if (child.isEmpty()) return base
-    val combined = if (base.endsWith("/")) "$base$child" else "$base/$child"
-    // collapse redundant slashes and simple ./ segments
-    val parts = combined.split('/').filter { it.isNotEmpty() && it != "." }
-    val stack = ArrayList<String>()
-    for (p in parts) {
-        when (p) {
-            ".." -> if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
-            else -> stack.add(p)
+        /**
+         * Convenience helper to start the service.
+         *
+         * Use context.startForegroundService(context, intent) on API >= 26.
+         */
+        fun startService(context: Context, port: Int = DEFAULT_PORT, rootDir: File? = null) {
+            val intent = Intent(context, FtpServerService::class.java).apply {
+                putExtra(EXTRA_PORT, port)
+                rootDir?.let { putExtra(EXTRA_ROOT_DIR, it.absolutePath) }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Convenience helper to stop the service. */
+        fun stopService(context: Context) {
+            val intent = Intent(context, FtpServerService::class.java)
+            context.stopService(intent)
         }
     }
-    return "/" + stack.joinToString("/")
 }
+```(text)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+    }
 
-/**
- * Default buffer size used by copy helpers.
- */
-private const val DEFAULT_BUFFER_SIZE = 8 * 1024
+    companion object {
+        private const val NOTIFICATION_CHANNEL_ID = "ftp_server_channel"
+        private const val NOTIFICATION_ID = 1001
+        private const val DEFAULT_PORT = 2121
+
+        /** Intent extras */
+        const val EXTRA_PORT = "com.twice.whatislove.uploadhub.EXTRA_PORT"
+        const val EXTRA_ROOT_DIR = "com.twice.whatislove.uploadhub.EXTRA_ROOT_DIR"
+
+        /**
+         * Convenience helper to start the service.
+         *
+         * Use context.startForegroundService(context, intent) on API >= 26.
+         */
+        fun startService(context: Context, port: Int = DEFAULT_PORT, rootDir: File? = null) {
+            val intent = Intent(context, FtpServerService::class.java).apply {
+                putExtra(EXTRA_PORT, port)
+                rootDir?.let { putExtra(EXTRA_ROOT_DIR, it.absolutePath) }
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Convenience helper to stop the service. */
+        fun stopService(context: Context) {
+            val intent = Intent(context, FtpServerService::class.java)
+            context.stopService(intent)
+        }
+    }
+}
