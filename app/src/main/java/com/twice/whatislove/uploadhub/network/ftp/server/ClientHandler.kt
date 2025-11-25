@@ -1,15 +1,17 @@
-package com.twice.whatislove.uploadhub
+package com.twice.whatislove.uploadhub.network.ftp.server
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
 import java.io.PrintWriter
 import java.net.Socket
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ClientHandler(private val socket: Socket, private val fs: FileSystemAdapter) {
     private val running = AtomicBoolean(true)
-    private var currentDir: Path = Path.of(".")
+    private var currentDir: File = File(".")
 
     suspend fun handle() {
         withContext(Dispatchers.IO) {
@@ -32,7 +34,7 @@ class ClientHandler(private val socket: Socket, private val fs: FileSystemAdapte
                                 out.println("230 User logged in")
                             }
                             "PWD" -> {
-                                out.println("257 \"${currentDir}\" is current directory")
+                                out.println("257 \"${currentDir.path}\" is current directory")
                             }
                             "CWD" -> {
                                 val newPath = fs.resolve(currentDir, arg)
@@ -47,7 +49,11 @@ class ClientHandler(private val socket: Socket, private val fs: FileSystemAdapte
                                 out.println("150 Here comes the directory listing")
                                 val entries = fs.list(currentDir)
                                 entries.forEach { e ->
-                                    val lineOut = if (e.isDirectory) "drwxr-xr-x 1 owner group ${e.size} ${e.name}" else "-rw-r--r-- 1 owner group ${e.size} ${e.name}"
+                                    val lineOut = if (e.isDirectory) {
+                                        "drwxr-xr-x 1 owner group ${e.size} ${e.name}"
+                                    } else {
+                                        "-rw-r--r-- 1 owner group ${e.size} ${e.name}"
+                                    }
                                     out.println(lineOut)
                                 }
                                 out.println("226 Directory send OK")
@@ -59,7 +65,10 @@ class ClientHandler(private val socket: Socket, private val fs: FileSystemAdapte
                                 } else {
                                     out.println("150 Opening data connection for RETR")
                                     fs.openRead(target).use { input ->
-                                        socket.getOutputStream().write(input.readAllBytes())
+                                        val outStream = BufferedOutputStream(socket.getOutputStream())
+                                        val inStream = BufferedInputStream(input)
+                                        inStream.copyTo(outStream)
+                                        outStream.flush()
                                     }
                                     out.println("226 Transfer complete")
                                 }
@@ -67,9 +76,11 @@ class ClientHandler(private val socket: Socket, private val fs: FileSystemAdapte
                             "STOR" -> {
                                 val target = fs.resolve(currentDir, arg)
                                 out.println("150 Ok to send data")
-                                fs.openWrite(target).use { outStream ->
-                                    val data = socket.getInputStream().readAllBytes()
-                                    outStream.write(data)
+                                fs.openWrite(target).use { outStreamRaw ->
+                                    val outStream = BufferedOutputStream(outStreamRaw)
+                                    val inStream = BufferedInputStream(socket.getInputStream())
+                                    inStream.copyTo(outStream)
+                                    outStream.flush()
                                 }
                                 out.println("226 Transfer complete")
                             }
