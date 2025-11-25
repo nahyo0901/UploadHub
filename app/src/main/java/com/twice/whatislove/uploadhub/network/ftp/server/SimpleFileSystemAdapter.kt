@@ -1,44 +1,64 @@
-package com.twice.whatislove.uploadhub
+package com.twice.whatislove.uploadhub.network.ftp.server
 
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 
-class SimpleFileSystemAdapter(private val rootPath: Path) : FileSystemAdapter {
-    override fun list(path: Path): List<FileEntry> {
-        val p = rootPath.resolve(path).normalize()
-        if (!Files.exists(p) || !Files.isDirectory(p)) return emptyList()
-        return Files.list(p).use { stream ->
-            stream.map { p2 ->
-                FileEntry(
-                    name = p2.fileName.toString(),
-                    isDirectory = Files.isDirectory(p2),
-                    size = Files.size(p2)
-                )
-            }.toList()
+class SimpleFileSystemAdapter(private val rootPath: File) : FileSystemAdapter {
+    private fun resolveToRoot(file: File): File {
+        val resolved = if (file.isAbsolute) file else File(rootPath, file.path)
+        return try {
+            // canonicalFile helps avoid simple ../ escapes
+            resolved.canonicalFile
+        } catch (_: Exception) {
+            resolved.absoluteFile
         }
     }
 
-    override fun openRead(path: Path): InputStream {
-        val p = rootPath.resolve(path).normalize()
-        return Files.newInputStream(p, StandardOpenOption.READ)
+    override fun list(dir: File): List<FileEntry> {
+        val target = resolveToRoot(dir)
+        if (!target.exists() || !target.isDirectory) return emptyList()
+        val files = target.listFiles() ?: return emptyList()
+        return files.map { f ->
+            FileEntry(
+                name = f.name,
+                isDirectory = f.isDirectory,
+                size = if (f.isFile) f.length() else 0L
+            )
+        }
     }
 
-    override fun openWrite(path: Path): OutputStream {
-        val p = rootPath.resolve(path).normalize()
-        Files.createDirectories(p.parent)
-        return Files.newOutputStream(p, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+    override fun openRead(file: File): InputStream {
+        val target = resolveToRoot(file)
+        if (!target.exists() || !target.isFile) {
+            throw java.io.FileNotFoundException("File not found: ${target.path}")
+        }
+        return FileInputStream(target)
     }
 
-    override fun exists(path: Path): Boolean {
-        return Files.exists(rootPath.resolve(path).normalize())
+    override fun openWrite(file: File): OutputStream {
+        val target = resolveToRoot(file)
+        target.parentFile?.let { parent ->
+            if (!parent.exists()) parent.mkdirs()
+        }
+        return FileOutputStream(target, false) // overwrite
     }
 
-    override fun resolve(path: Path, child: String): Path {
-        return path.resolve(child).normalize()
+    override fun exists(file: File): Boolean {
+        val target = resolveToRoot(file)
+        return target.exists()
     }
 
-    override fun root(): Path = rootPath
+    override fun resolve(dir: File, child: String): File {
+        val base = resolveToRoot(dir)
+        return resolveToRoot(File(base, child))
+    }
+
+    override fun root(): File = try {
+        rootPath.canonicalFile
+    } catch (_: Exception) {
+        rootPath.absoluteFile
+    }
 }
