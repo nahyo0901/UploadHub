@@ -1,5 +1,5 @@
-buildscript {
-    repositories { google(); mavenCentral() }
-    dependencies { classpath 'com.android.tools.build:gradle:8.1.0'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' }
+// Root build.gradle (AGP 8.1+ compatible)
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
 }
-allprojects { repositories { google(); mavenCentral() } }
