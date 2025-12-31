@@ -14,10 +14,13 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+
         multiDexEnabled true
     }
 
-    buildFeatures { compose true }
+    buildFeatures {
+        compose true
+    }
 
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.3'
@@ -28,40 +31,47 @@ android {
     }
 
     packagingOptions {
-        resources.excludes += ['/META-INF/*']
+        resources {
+            excludes += ['/META-INF/*']
+        }
     }
 }
 
 dependencies {
+
+    /* ---------- Core ---------- */
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.11.0'
 
-    // Compose & Material3
-    implementation 'androidx.activity:activity-compose:1.8.2'
-    implementation 'androidx.compose.ui:ui:1.5.0'
-    implementation 'androidx.compose.material3:material3:1.1.0-alpha15'
-    implementation 'androidx.compose.ui:ui-tooling-preview:1.5.0'
-    debugImplementation 'androidx.compose.ui:ui-tooling:1.5.0'
+    /* ---------- Compose (BOM-managed) ---------- */
+    implementation platform('androidx.compose:compose-bom:2023.10.01')
 
-    // Networking / uploads
+    implementation 'androidx.activity:activity-compose:1.8.2'
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation 'androidx.compose.material3:material3'
+
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+
+    /* ---------- Networking ---------- */
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
 
-    // Room (upload history)
+    /* ---------- Room (Upload History) ---------- */
     implementation 'androidx.room:room-runtime:2.5.2'
     kapt 'androidx.room:room-compiler:2.5.2'
     implementation 'androidx.room:room-ktx:2.5.2'
 
-    // DataStore
+    /* ---------- DataStore ---------- */
     implementation 'androidx.datastore:datastore-preferences:1.2.0'
 
-    // FTP client (commons-net)
+    /* ---------- FTP ---------- */
     implementation 'commons-net:commons-net:3.8.0'
 
-    // Navigation
+    /* ---------- Navigation ---------- */
     implementation 'androidx.navigation:navigation-compose:2.7.0'
 
-    // Multidex
+    /* ---------- Multidex ---------- */
     implementation 'androidx.multidex:multidex:2.0.1'
 }
