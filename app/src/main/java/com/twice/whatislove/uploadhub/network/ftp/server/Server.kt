@@ -8,52 +8,71 @@ import kotlin.coroutines.CoroutineContext
 class Server(
     private val socketProvider: SocketProvider,
     private val fileSystem: FileSystemAdapter,
-    private val coroutineContext: CoroutineContext = Dispatchers.IO
+    coroutineContext: CoroutineContext = Dispatchers.IO
 ) : Closeable {
-    private val scope = CoroutineScope(coroutineContext + SupervisorJob())
+
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(coroutineContext + job)
+
     @Volatile
     private var running = false
 
     fun start() {
         if (running) return
         running = true
+
         scope.launch {
-            socketProvider.open()
             try {
+                socketProvider.open()
                 acceptLoop()
+            } catch (t: Throwable) {
+                t.printStackTrace()
             } finally {
                 try { socketProvider.close() } catch (_: Throwable) {}
             }
         }
+
         println("FTP server started on ${socketProvider.listenAddress()}")
     }
 
     private suspend fun acceptLoop() {
-        while (isActive && running) {
-            val socket: Socket? = withContext(Dispatchers.IO) {
-                try {
+        while (scope.isActive && running) {
+            val socket = try {
+                withContext(Dispatchers.IO) {
                     socketProvider.accept()
-                } catch (t: Throwable) {
-                    t.printStackTrace()
-                    null
                 }
-            } ?: break
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                null
+            }
+
+            if (socket == null) {
+                delay(100) // prevent tight loop on failure
+                continue
+            }
 
             scope.launch {
-                try {
-                    ClientHandler(socket, fileSystem).handle()
-                } catch (t: Throwable) {
-                    t.printStackTrace()
-                } finally {
-                    try { socket.close() } catch (_: Throwable) {}
-                }
+                handleClient(socket)
             }
         }
     }
 
+    private suspend fun handleClient(socket: Socket) {
+        try {
+            ClientHandler(socket, fileSystem).handle()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        } finally {
+            try { socket.close() } catch (_: Throwable) {}
+        }
+    }
+
     fun stop() {
+        if (!running) return
         running = false
-        scope.cancel()
+
+        job.cancel()
+
         try { socketProvider.close() } catch (_: Throwable) {}
         println("FTP server stopped")
     }
