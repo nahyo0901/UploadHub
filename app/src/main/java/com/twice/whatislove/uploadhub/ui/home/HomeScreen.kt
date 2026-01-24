@@ -10,14 +10,35 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun HomeScreen(onCatbox: () -> Unit, onSettings: () -> Unit) {
+fun HomeScreen(
+    onCatbox: () -> Unit,
+    onLitterbox: () -> Unit,
+    onRclone: () -> Unit,
+    onSettings: () -> Unit,
+    onAbout: () -> Unit
+) {
     Surface(modifier = Modifier.fillMaxSize()) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center, modifier = Modifier.padding(16.dp)) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
             Text("UploadHub")
             Spacer(modifier = Modifier.height(20.dp))
+
             Button(onClick = onCatbox) { Text("Open Catbox") }
             Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onLitterbox) { Text("Open Litterbox") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onRclone) { Text("Open Rclone") }
+            Spacer(modifier = Modifier.height(8.dp))
+
             Button(onClick = onSettings) { Text("Settings") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onAbout) { Text("About") }
         }
     }
 }
