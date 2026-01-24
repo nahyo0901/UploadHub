@@ -15,14 +15,19 @@ import com.twice.whatislove.uploadhub.ui.screens.SettingsScreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadHubNavHost() {
-    val nav = rememberNavController()
-    NavHost(navController = nav, startDestination = "home") {
-        composable("home") { 
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = "home") {
+        composable("home") {
             HomeScreen(
-                onCatbox = { nav.navigate("catbox") }, 
-                onSettings = { nav.navigate("settings") }
-            ) 
+                onCatbox = { navController.navigate("catbox") },
+                onLitterbox = { navController.navigate("litterbox") },
+                onRclone = { navController.navigate("rclone") },
+                onSettings = { navController.navigate("settings") },
+                onAbout = { navController.navigate("about") }
+            )
         }
+
         composable("catbox") { CatboxScreen() }
         composable("litterbox") { LitterboxScreen() }
         composable("rclone") { RcloneScreen() }
