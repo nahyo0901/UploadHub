@@ -7,83 +7,92 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.Response
 import okio.Buffer
 import okio.ForwardingSink
 import okio.buffer
-import okio.sink
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Coroutine-friendly Litterbox (catbox.moe internal) uploader.
+ * Coroutine-friendly Litterbox uploader.
  *
- * - Suspendable API (call from coroutine scope).
- * - Optional progress callback reporting bytesSent and totalBytes (total may be -1 if unknown).
- * - Uploads single or multiple files in one request.
- *
- * Endpoint: https://litterbox.catbox.moe/resources/internals/api.php
+ * Endpoint:
+ * https://litterbox.catbox.moe/resources/internals/api.php
  */
 object LitterboxApi {
-    private const val API_URL = "https://litterbox.catbox.moe/resources/internals/api.php"
+
+    private const val API_URL =
+        "https://litterbox.catbox.moe/resources/internals/api.php"
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .callTimeout(5, TimeUnit.MINUTES)
         .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(5, TimeUnit.MINUTES)
         .build()
 
     /**
-     * Upload a single file.
-     *
-     * @param file file to upload
-     * @param time retention time string accepted by the API (e.g., "72h")
-     * @param progress optional callback invoked on the calling coroutine thread with (bytesSent, totalBytes)
-     * @return server response body (usually a URL)
-     * @throws IOException on network or IO errors
+     * Upload a single file
      */
     suspend fun upload(
         file: File,
         time: String = "72h",
-        progress: ((bytesSent: Long, totalBytes: Long) -> Unit)? = null
+        progress: ((sent: Long, total: Long) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
-        if (!file.exists() || !file.isFile) throw IOException("File not found: ${file.absolutePath}")
 
-        val fileBody = file.asRequestBody("application/octet-stream".toMediaTypeOrNull())
-        val requestBody = MultipartBody.Builder().setType(MultipartBody.FORM)
+        if (!file.exists() || !file.isFile) {
+            throw IOException("File not found: ${file.absolutePath}")
+        }
+
+        val fileBody =
+            file.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+
+        val multipart = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
             .addFormDataPart("reqtype", "fileupload")
             .addFormDataPart("time", time)
             .addFormDataPart("fileToUpload", file.name, fileBody)
             .build()
 
-        val bodyToSend = if (progress != null) CountingRequestBody(requestBody) { written, total ->
-            progress(written, total)
-        } else requestBody
+        val requestBody = if (progress != null) {
+            CountingRequestBody(multipart) { sent, total ->
+                progress(sent, total)
+            }
+        } else {
+            multipart
+        }
 
-        val req = Request.Builder().url(API_URL).post(bodyToSend).build()
-        client.newCall(req).execute().use { resp ->
-            handleResponse(resp)
+        val request = Request.Builder()
+            .url(API_URL)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            handleResponse(response)
         }
     }
 
     /**
-     * Upload multiple files in a single request.
-     *
-     * @param files list of files to upload
-     * @param time retention time string
-     * @param progress optional callback invoked with (bytesSent, totalBytes)
-     * @return server response body (often newline-separated URLs)
+     * Upload multiple files in one request
      */
     suspend fun uploadMultiple(
         files: List<File>,
         time: String = "72h",
-        progress: ((bytesSent: Long, totalBytes: Long) -> Unit)? = null
+        progress: ((sent: Long, total: Long) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
-        if (files.isEmpty()) throw IllegalArgumentException("No files provided")
-        files.forEach { if (!it.exists() || !it.isFile) throw IOException("File not found: ${it.absolutePath}") }
 
-        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+        if (files.isEmpty()) throw IllegalArgumentException("No files provided")
+
+        files.forEach {
+            if (!it.exists() || !it.isFile) {
+                throw IOException("File not found: ${it.absolutePath}")
+            }
+        }
+
+        val builder = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
             .addFormDataPart("reqtype", "fileupload")
             .addFormDataPart("time", time)
 
@@ -96,32 +105,41 @@ object LitterboxApi {
         }
 
         val multipart = builder.build()
-        val bodyToSend = if (progress != null) CountingRequestBody(multipart) { written, total ->
-            progress(written, total)
-        } else multipart
 
-        val req = Request.Builder().url(API_URL).post(bodyToSend).build()
-        client.newCall(req).execute().use { resp ->
-            handleResponse(resp)
+        val requestBody = if (progress != null) {
+            CountingRequestBody(multipart) { sent, total ->
+                progress(sent, total)
+            }
+        } else {
+            multipart
+        }
+
+        val request = Request.Builder()
+            .url(API_URL)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            handleResponse(response)
         }
     }
 
-    /**
-     * Validate response and return trimmed body string or throw IOException.
-     */
-    private fun handleResponse(resp: Response): String {
-        if (!resp.isSuccessful) {
-            throw IOException("Upload failed: HTTP ${resp.code}")
+    private fun handleResponse(response: Response): String {
+        if (!response.isSuccessful) {
+            throw IOException("Upload failed: HTTP ${response.code}")
         }
-        val body = resp.body?.string() ?: ""
-        if (body.isBlank()) throw IOException("Empty response from server")
-        return body.trim()
+
+        val body = response.body?.string()?.trim().orEmpty()
+        if (body.isEmpty()) throw IOException("Empty response from server")
+
+        return body
     }
 
     /**
-     * RequestBody wrapper that reports progress while writing.
+     * RequestBody wrapper that reports upload progress.
      *
-     * Callback is invoked on the thread performing the upload (Dispatchers.IO when used above).
+     * NOTE:
+     * We forward the BufferedSink directly — no sink.sink() usage.
      */
     private class CountingRequestBody(
         private val delegate: RequestBody,
@@ -133,24 +151,25 @@ object LitterboxApi {
         override fun contentLength(): Long {
             return try {
                 delegate.contentLength()
-            } catch (e: IOException) {
+            } catch (_: IOException) {
                 -1L
             }
         }
 
         override fun writeTo(sink: okio.BufferedSink) {
-            val total = contentLength()
-            val forwarding = object : ForwardingSink(sink.sink()) {
+            val countingSink = object : ForwardingSink(sink) {
                 var bytesWritten = 0L
+                val total = contentLength()
+
                 override fun write(source: Buffer, byteCount: Long) {
                     super.write(source, byteCount)
                     bytesWritten += byteCount
-                    onProgress(bytesWritten, if (total >= 0) total else -1L)
+                    onProgress(bytesWritten, total)
                 }
             }.buffer()
 
-            delegate.writeTo(forwarding)
-            forwarding.flush()
+            delegate.writeTo(countingSink)
+            countingSink.flush()
         }
     }
 }
