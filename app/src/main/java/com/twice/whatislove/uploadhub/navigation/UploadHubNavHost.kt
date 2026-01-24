@@ -5,12 +5,12 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.twice.whatislove.uploadhub.ui.about.AboutScreen
-import com.twice.whatislove.uploadhub.ui.catbox.CatboxScreen
+import com.twice.whatislove.uploadhub.ui.screen.AboutScreen
+import com.twice.whatislove.uploadhub.ui.screen.CatboxScreen
 import com.twice.whatislove.uploadhub.ui.home.HomeScreen
-import com.twice.whatislove.uploadhub.ui.litterbox.LitterboxScreen
-import com.twice.whatislove.uploadhub.ui.rclone.RcloneScreen
-import com.twice.whatislove.uploadhub.ui.settings.SettingsScreen
+import com.twice.whatislove.uploadhub.ui.screen.LitterboxScreen
+import com.twice.whatislove.uploadhub.ui.screen.RcloneScreen
+import com.twice.whatislove.uploadhub.ui.screen.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
