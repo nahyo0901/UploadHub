@@ -3,6 +3,7 @@ package com.twice.whatislove.uploadhub.network.ftp.server
 import kotlinx.coroutines.*
 import java.io.Closeable
 import java.net.Socket
+import kotlinx.coroutines.isActive
 import kotlin.coroutines.CoroutineContext
 
 class Server(
