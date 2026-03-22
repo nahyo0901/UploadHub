@@ -1,16 +1,34 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Internet access for FTP server -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Storage permissions -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>
-    <application android:label="UploadHub" android:icon="@mipmap/ic_launcher" android:allowBackup="true">
 
-        <activity android:name=".MainActivity" android:exported="true">
+    <!-- Required on Android 13+ for posting notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <application
+        android:label="UploadHub"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- Optional: declare your service explicitly -->
+        <service
+            android:name=".network.ftp.server.FtpServerService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|mediaPlayback|dataSync"/>
+            
     </application>
 </manifest>
