@@ -1,6 +1,6 @@
 package com.twice.whatislove.uploadhub.network.ftp.server
 
-import java.nio.file.Paths
+import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -18,7 +18,7 @@ import kotlin.system.exitProcess
  */
 fun main(args: Array<String>) {
     val port = args.getOrNull(0)?.toIntOrNull() ?: 2121
-    val rootDir = args.getOrNull(1)?.let { java.io.File(it) } ?: Paths.get(".").toFile()
+    val rootDir = args.getOrNull(1)?.let { File(it) } ?: File(".")
 
     if (!rootDir.exists()) {
         val created = rootDir.mkdirs()
