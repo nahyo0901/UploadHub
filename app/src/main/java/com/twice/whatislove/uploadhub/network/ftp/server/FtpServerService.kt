@@ -7,9 +7,11 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,25 +19,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
 
-/**
- * Foreground Service that hosts the simple FTP server core.
- *
- * - Starts ServerLauncher on service start.
- * - Keeps the server running in a foreground notification so Android does not kill it.
- * - Stops the server when the service is destroyed.
- *
- * Notes:
- * - This service is a lightweight skeleton intended for development and local networks.
- * - Do not expose this server to untrusted networks without adding authentication and TLS.
- * - Ensure you declare INTERNET and FOREGROUND_SERVICE permissions in AndroidManifest.xml.
- */
 class FtpServerService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannelIfNeeded()
-        startForeground(NOTIFICATION_ID, buildNotification(isRunning = false))
+        postNotification(isRunning = false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -50,8 +40,7 @@ class FtpServerService : Service() {
         serviceScope.launch {
             try {
                 ServerLauncher.start(port = port, rootDir = rootDir)
-                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.notify(NOTIFICATION_ID, buildNotification(isRunning = true))
+                postNotification(isRunning = true)
             } catch (t: Throwable) {
                 t.printStackTrace()
                 stopSelf()
@@ -80,9 +69,7 @@ class FtpServerService : Service() {
                 NOTIFICATION_CHANNEL_ID,
                 "FTP Server",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Notification channel for FTP server foreground service"
-            }
+            ).apply { description = "Notification channel for FTP server foreground service" }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         }
@@ -110,6 +97,23 @@ class FtpServerService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    /** Posts the notification safely on Android 13+ */
+    private fun postNotification(isRunning: Boolean) {
+        // On Android 13+ check POST_NOTIFICATIONS permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Permission not granted: skip notification
+                return
+            }
+        }
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, buildNotification(isRunning))
     }
 
     companion object {
