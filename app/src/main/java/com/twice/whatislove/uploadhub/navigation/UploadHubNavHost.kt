@@ -9,7 +9,7 @@ import com.twice.whatislove.uploadhub.ui.screens.AboutScreen
 import com.twice.whatislove.uploadhub.ui.screens.CatboxScreen
 import com.twice.whatislove.uploadhub.ui.home.HomeScreen
 import com.twice.whatislove.uploadhub.ui.screens.LitterboxScreen
-import com.twice.whatislove.uploadhub.ui.screens.ServerToServerFT
+import com.twice.whatislove.uploadhub.ui.screens.ServerToServerFtpScreen
 import com.twice.whatislove.uploadhub.ui.screens.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,7 +22,7 @@ fun UploadHubNavHost() {
             HomeScreen(
                 onCatbox = { navController.navigate("catbox") },
                 onLitterbox = { navController.navigate("litterbox") },
-                onRclone = { navController.navigate("rclone") },
+                onServerToServerFtp = { navController.navigate("servertoserverftp") },
                 onSettings = { navController.navigate("settings") },
                 onAbout = { navController.navigate("about") }
             )
@@ -30,7 +30,7 @@ fun UploadHubNavHost() {
 
         composable("catbox") { CatboxScreen() }
         composable("litterbox") { LitterboxScreen() }
-        composable("rclone") { RcloneScreen() }
+        composable("servertoserverftp") { ServertoServerFtpScreen() }
         composable("settings") { SettingsScreen() }
         composable("about") { AboutScreen() }
     }
