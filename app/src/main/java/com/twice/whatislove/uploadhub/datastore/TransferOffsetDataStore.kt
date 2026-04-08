@@ -1,4 +1,4 @@
-package com.twice.whatislove.uploadhub.data
+package com.twice.whatislove.uploadhub.datastore
 
 import android.content.Context
 import androidx.datastore.preferences.core.LongPreferencesKey
