@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onCatbox: () -> Unit,
     onLitterbox: () -> Unit,
-    onRclone: () -> Unit,
+    onServerToServerFtp: () -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit
 ) {
@@ -32,7 +32,7 @@ fun HomeScreen(
             Button(onClick = onLitterbox) { Text("Open Litterbox") }
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(onClick = onRclone) { Text("Open Rclone") }
+            Button(onClick = onServerToServerFtp) { Text("Server → Server FTP") }
             Spacer(modifier = Modifier.height(8.dp))
 
             Button(onClick = onSettings) { Text("Settings") }
