@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.LongPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.preferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 
 // Create DataStore instance
@@ -23,20 +25,20 @@ class TransferOffsetDataStore(private val context: Context) {
     }
 
     /**
-     * Retrieve offset in bytes for a given transferId
-     * Returns 0 if not found
+     * Retrieve offset in bytes for a given transferId as Flow
      */
-    suspend fun getOffset(transferId: String): Long {
+    fun getOffsetFlow(transferId: String): Flow<Long> {
         val key = preferencesKey<Long>(transferId)
-        val prefs = context.dataStore.data.first()
-        return prefs[key] ?: 0L
+        return context.dataStore.data.map { prefs ->
+            prefs[key] ?: 0L
+        }
     }
 
     /**
-     * Retrieve offset once for synchronous usage inside transfer loop
+     * Retrieve offset once (synchronous-friendly inside loops)
      */
     suspend fun getOffsetOnce(transferId: String): Long {
-        return getOffset(transferId)
+        return getOffsetFlow(transferId).first()
     }
 
     /**
