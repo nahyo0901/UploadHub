@@ -18,13 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.twice.whatislove.uploadhub.network.ftp.servertoserver.ServerToServerFTP
 import com.twice.whatislove.uploadhub.datastore.TransferOffsetDataStore
-import kotlinx.coroutines.*
-import java.io.InputStream
-import java.net.InetAddress
-import org.apache.commons.net.ftp.FTPClient
-import org.apache.commons.net.ftp.FTPReply
-import java.io.OutputStream
-import java.io.IOException
+import kotlinx.coroutines.launch
 
 @Composable
 fun ServerToServerFtpScreen() {
@@ -58,7 +52,6 @@ fun ServerToServerFtpScreen() {
 
     val transferId = "$server1-$remoteFile1->$server2-$remoteFile2"
 
-    // File picker for remoteFile1 (optional, if picking local files for testing)
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
         onResult = { uri: Uri? ->
@@ -71,10 +64,9 @@ fun ServerToServerFtpScreen() {
 
     // Load saved offset
     LaunchedEffect(transferId) {
-        offsetDataStore.getOffset(transferId).collect { savedOffset ->
-            totalTransferred = savedOffset
-            if (savedOffset > 0) log("Resuming transfer from $savedOffset bytes")
-        }
+        val savedOffset = offsetDataStore.getOffsetOnce(transferId)
+        totalTransferred = savedOffset
+        if (savedOffset > 0) log("Resuming transfer from $savedOffset bytes")
     }
 
     Column(
@@ -87,28 +79,27 @@ fun ServerToServerFtpScreen() {
         Text("Server → Server FTP", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Server1 Input ---
-        OutlinedTextField(value = server1, onValueChange = { server1 = it }, label = { Text("Server1 (host:port)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = user1, onValueChange = { user1 = it }, label = { Text("User1") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = pass1, onValueChange = { pass1 = it }, label = { Text("Password1") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = remoteFile1, onValueChange = { remoteFile1 = it }, label = { Text("Remote file path on Server1") }, modifier = Modifier.fillMaxWidth())
+        // Server1
+        OutlinedTextField(server1, { server1 = it }, label = { Text("Server1 (host:port)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user1, { user1 = it }, label = { Text("User1") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(pass1, { pass1 = it }, label = { Text("Password1") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(remoteFile1, { remoteFile1 = it }, label = { Text("Remote file path on Server1") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(12.dp))
 
-        // --- Server2 Input ---
-        OutlinedTextField(value = server2, onValueChange = { server2 = it }, label = { Text("Server2 (host:port)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = user2, onValueChange = { user2 = it }, label = { Text("User2") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = pass2, onValueChange = { pass2 = it }, label = { Text("Password2") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = remoteFile2, onValueChange = { remoteFile2 = it }, label = { Text("Target file path on Server2") }, modifier = Modifier.fillMaxWidth())
+        // Server2
+        OutlinedTextField(server2, { server2 = it }, label = { Text("Server2 (host:port)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(user2, { user2 = it }, label = { Text("User2") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(pass2, { pass2 = it }, label = { Text("Password2") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(remoteFile2, { remoteFile2 = it }, label = { Text("Target file path on Server2") }, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Status & Progress ---
+        // Status & Progress
         Text("Status: $status")
         LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
         Text("Progress: $percentage % ($totalTransferred / $fileSize bytes)")
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- Buttons ---
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -120,7 +111,7 @@ fun ServerToServerFtpScreen() {
                             try {
                                 status = "Connecting..."
                                 ServerToServerFTP().transferServerToServerWithProgress(
-                                    context = context,
+                                    context,
                                     server1, user1, pass1, remoteFile1,
                                     server2, user2, pass2, remoteFile2,
                                     onProgress = { transferred, size ->
@@ -148,9 +139,7 @@ fun ServerToServerFtpScreen() {
             ) { Text("Start Transfer") }
 
             Button(
-                onClick = {
-                    isCancelled = true
-                },
+                onClick = { isCancelled = true },
                 enabled = isTransferring
             ) { Text("Cancel") }
         }
@@ -168,7 +157,6 @@ fun ServerToServerFtpScreen() {
     }
 }
 
-/** Helper function to extract display name from Uri (optional) */
 fun getFileName(context: Context, uri: Uri): String {
     var name = "unknown"
     val cursor = context.contentResolver.query(uri, null, null, null, null)
