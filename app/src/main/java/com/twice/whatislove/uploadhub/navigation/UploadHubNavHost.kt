@@ -30,7 +30,7 @@ fun UploadHubNavHost() {
 
         composable("catbox") { CatboxScreen() }
         composable("litterbox") { LitterboxScreen() }
-        composable("servertoserverftp") { ServertoServerFtpScreen() }
+        composable("servertoserverftp") { ServerToServerFtpScreen() }
         composable("settings") { SettingsScreen() }
         composable("about") { AboutScreen() }
     }
