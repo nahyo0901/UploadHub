@@ -2,7 +2,7 @@ package com.twice.whatislove.uploadhub.network.ftp.servertoserver
 
 import android.content.Context
 import android.util.Log
-import com.twice.whatislove.uploadhub.data.TransferOffsetDataStore
+import package com.twice.whatislove.uploadhub.datastore.TransferOffsetDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.net.ftp.FTPClient
