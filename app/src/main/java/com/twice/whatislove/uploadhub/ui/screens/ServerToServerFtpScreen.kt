@@ -5,164 +5,176 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import com.twice.whatislove.uploadhub.network.ftp.servertoserver.ServerToServerFTP
+import com.twice.whatislove.uploadhub.data.TransferOffsetDataStore
+import kotlinx.coroutines.*
 import java.io.InputStream
+import java.net.InetAddress
+import org.apache.commons.net.ftp.FTPClient
+import org.apache.commons.net.ftp.FTPReply
+import java.io.OutputStream
+import java.io.IOException
 
-/* ---------------------------------------------------
-   SAFELY GET FILE NAME FROM URI (Modern Android Safe)
---------------------------------------------------- */
-fun getFileName(context: Context, uri: Uri): String {
-    return try {
-        var name: String? = null
-        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (index >= 0 && cursor.moveToFirst()) {
-                name = cursor.getString(index)
-            }
-        }
-        name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "file_${System.currentTimeMillis()}"
-    } catch (e: Exception) {
-        "file_${System.currentTimeMillis()}"
-    }
-}
-
-/* ---------------------------------------------------
-   SERVER → SERVER FTP SCREEN
---------------------------------------------------- */
 @Composable
 fun ServerToServerFtpScreen() {
-
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
+    val offsetDataStore = TransferOffsetDataStore(context)
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // File picker state
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedFileName by remember { mutableStateOf("No file selected") }
-
-    // FTP server 1
-    var host1 by remember { mutableStateOf("") }
+    var server1 by remember { mutableStateOf("") }
     var user1 by remember { mutableStateOf("") }
     var pass1 by remember { mutableStateOf("") }
+    var remoteFile1 by remember { mutableStateOf("") }
 
-    // FTP server 2
-    var host2 by remember { mutableStateOf("") }
+    var server2 by remember { mutableStateOf("") }
     var user2 by remember { mutableStateOf("") }
     var pass2 by remember { mutableStateOf("") }
+    var remoteFile2 by remember { mutableStateOf("") }
 
     var status by remember { mutableStateOf("Idle") }
     var progress by remember { mutableStateOf(0f) }
+    var percentage by remember { mutableStateOf(0) }
+    var logs by remember { mutableStateOf(listOf<String>()) }
+    var isTransferring by remember { mutableStateOf(false) }
+    var isCancelled by remember { mutableStateOf(false) }
+    var totalTransferred by remember { mutableStateOf(0L) }
+    var fileSize by remember { mutableStateOf(0L) }
 
-    /* FILE PICKER (MODERN ANDROID SAFE) */
-    val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            selectedUri = it
-            selectedFileName = getFileName(context, it)
-            status = "Selected: $selectedFileName"
+    fun log(message: String) {
+        logs = logs + message
+    }
+
+    val transferId = "$server1-$remoteFile1->$server2-$remoteFile2"
+
+    // File picker for remoteFile1 (optional, if picking local files for testing)
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                remoteFile1 = getFileName(context, it)
+                log("Selected file: $remoteFile1")
+            }
+        }
+    )
+
+    // Load saved offset
+    LaunchedEffect(transferId) {
+        offsetDataStore.getOffset(transferId).collect { savedOffset ->
+            totalTransferred = savedOffset
+            if (savedOffset > 0) log("Resuming transfer from $savedOffset bytes")
         }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(24.dp)
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        horizontalAlignment = Alignment.Start
     ) {
-
         Text("Server → Server FTP", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Spacer(Modifier.height(16.dp))
+        // --- Server1 Input ---
+        OutlinedTextField(value = server1, onValueChange = { server1 = it }, label = { Text("Server1 (host:port)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = user1, onValueChange = { user1 = it }, label = { Text("User1") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = pass1, onValueChange = { pass1 = it }, label = { Text("Password1") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = remoteFile1, onValueChange = { remoteFile1 = it }, label = { Text("Remote file path on Server1") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(12.dp))
 
-        /* ---------------- SERVER 1 ---------------- */
-        Text("Source FTP Server", style = MaterialTheme.typography.titleMedium)
+        // --- Server2 Input ---
+        OutlinedTextField(value = server2, onValueChange = { server2 = it }, label = { Text("Server2 (host:port)") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = user2, onValueChange = { user2 = it }, label = { Text("User2") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = pass2, onValueChange = { pass2 = it }, label = { Text("Password2") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = remoteFile2, onValueChange = { remoteFile2 = it }, label = { Text("Target file path on Server2") }, modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(host1, { host1 = it }, label = { Text("Host (ftp.example.com)") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user1, { user1 = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(pass1, { pass1 = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(20.dp))
-
-        /* ---------------- SERVER 2 ---------------- */
-        Text("Destination FTP Server", style = MaterialTheme.typography.titleMedium)
-
-        OutlinedTextField(host2, { host2 = it }, label = { Text("Host") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(user2, { user2 = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(pass2, { pass2 = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(20.dp))
-
-        /* FILE PICKER */
-        Button(onClick = { picker.launch("*/*") }) {
-            Text("Select Local File (optional)")
-        }
-
-        Text(selectedFileName)
-
-        Spacer(Modifier.height(12.dp))
-
-        LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(12.dp))
+        // --- Status & Progress ---
         Text("Status: $status")
+        LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+        Text("Progress: $percentage % ($totalTransferred / $fileSize bytes)")
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        /* TRANSFER BUTTON */
-        Button(
-            onClick = {
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        status = "Connecting to servers..."
-                        progress = 0.1f
-
-                        // If user selected a file → upload from phone to server2
-                        if (selectedUri != null) {
-                            status = "Uploading phone → FTP server..."
-                            val stream: InputStream? =
-                                context.contentResolver.openInputStream(selectedUri!!)
-
-                            if (stream == null) {
-                                status = "Failed to open file stream"
-                                return@launch
+        // --- Buttons ---
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    if (!isTransferring) {
+                        isCancelled = false
+                        isTransferring = true
+                        logs = emptyList()
+                        coroutineScope.launch {
+                            try {
+                                status = "Connecting..."
+                                ServerToServerFTP().transferServerToServerWithProgress(
+                                    context = context,
+                                    server1, user1, pass1, remoteFile1,
+                                    server2, user2, pass2, remoteFile2,
+                                    onProgress = { transferred, size ->
+                                        totalTransferred = transferred
+                                        fileSize = size
+                                        progress = if (size > 0) transferred.toFloat() / size else 0f
+                                        percentage = if (size > 0) (progress * 100).toInt() else 0
+                                    },
+                                    onLog = { log(it) },
+                                    isCancelled = { isCancelled },
+                                    transferId = transferId,
+                                    offsetDataStore = offsetDataStore
+                                )
+                                status = "Transfer Complete"
+                            } catch (e: Exception) {
+                                status = "Error: ${e.message}"
+                                log("Transfer failed: ${e.message}")
+                            } finally {
+                                isTransferring = false
                             }
-
-                            // TODO: connect FTP + upload stream to server2
-                            // ServerToServerFTP.uploadStreamToServer2(stream, selectedFileName, host2, user2, pass2)
-
-                            progress = 1f
-                            status = "Upload complete (stub)"
-                        } else {
-                            // Server → Server transfer mode
-                            status = "Starting server → server transfer..."
-
-                            // TODO: call your Kotlin port here:
-                            // ServerToServerFTP.transfer(server1, user1, pass1, file1, server2, user2, pass2, file2)
-
-                            progress = 1f
-                            status = "Server → Server transfer complete (stub)"
                         }
-
-                    } catch (e: Exception) {
-                        status = "Error: ${e.message}"
                     }
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Start Transfer")
+                },
+                enabled = !isTransferring
+            ) { Text("Start Transfer") }
+
+            Button(
+                onClick = {
+                    isCancelled = true
+                },
+                enabled = isTransferring
+            ) { Text("Cancel") }
         }
 
-        Spacer(Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Logs:", style = MaterialTheme.typography.titleMedium)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEEEEEE))
+                .padding(8.dp)
+        ) {
+            logs.forEach { Text(it) }
+        }
     }
+}
+
+/** Helper function to extract display name from Uri (optional) */
+fun getFileName(context: Context, uri: Uri): String {
+    var name = "unknown"
+    val cursor = context.contentResolver.query(uri, null, null, null, null)
+    cursor?.use {
+        val index = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && it.moveToFirst()) name = it.getString(index)
+    }
+    return name
 }
