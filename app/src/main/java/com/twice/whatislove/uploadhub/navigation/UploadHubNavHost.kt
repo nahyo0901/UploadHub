@@ -9,7 +9,7 @@ import com.twice.whatislove.uploadhub.ui.screens.AboutScreen
 import com.twice.whatislove.uploadhub.ui.screens.CatboxScreen
 import com.twice.whatislove.uploadhub.ui.home.HomeScreen
 import com.twice.whatislove.uploadhub.ui.screens.LitterboxScreen
-import com.twice.whatislove.uploadhub.ui.screens.RcloneScreen
+import com.twice.whatislove.uploadhub.ui.screens.ServerToServerFT
 import com.twice.whatislove.uploadhub.ui.screens.SettingsScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
