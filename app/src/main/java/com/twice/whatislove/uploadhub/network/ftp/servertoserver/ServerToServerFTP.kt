@@ -1,4 +1,4 @@
-package com.twice.whatislove.uploadhub.ftp
+package com.twice.whatislove.uploadhub.network.ftp.servertoserver
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
