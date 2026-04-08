@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.twice.whatislove.uploadhub.network.ftp.servertoserver.ServerToServerFTP
-import com.twice.whatislove.uploadhub.data.TransferOffsetDataStore
+import com.twice.whatislove.uploadhub.datastore.TransferOffsetDataStore
 import kotlinx.coroutines.*
 import java.io.InputStream
 import java.net.InetAddress
