@@ -55,7 +55,7 @@ fun AboutScreen() {
 
         // Credits / Footer
         Text(
-            text = "© 2026 UploadHub",
+            text = "© 20xx Take Me So High",
             style = MaterialTheme.typography.bodySmall
         )
     }
