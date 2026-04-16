@@ -65,7 +65,7 @@ fun LitterboxScreen() {
         Spacer(modifier = Modifier.height(8.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("24h", "48h", "72h", "1w").forEach { time ->
+            listOf("1h", "12h", "24h", "72h").forEach { time ->
                 Button(
                     onClick = { retentionTime = time },
                     colors = ButtonDefaults.buttonColors(
