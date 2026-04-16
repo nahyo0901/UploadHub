@@ -32,7 +32,7 @@ fun HomeScreen(
             Button(onClick = onLitterbox) { Text("Open Litterbox") }
             Spacer(modifier = Modifier.height(8.dp))
 
-            Button(onClick = onServerToServerFtp) { Text("Server → Server FTP") }
+            Button(onClick = onServerToServerFtp) { Text("Server to Server FTP") }
             Spacer(modifier = Modifier.height(8.dp))
 
             Button(onClick = onSettings) { Text("Settings") }
