@@ -14,11 +14,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------------------------
+      # CHECKOUT
+      # ---------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # ---------------------------
+      # JAVA SETUP
+      # ---------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -29,17 +35,32 @@ jobs:
         run: chmod +x ./gradlew
 
       # ---------------------------
-      # ALWAYS RUN BUILD
+      # BUILD (SAFE + RELIABLE)
       # ---------------------------
-      - name: Run build and capture errors
+      - name: Run build and capture result
         id: build
         run: |
+          set +e
           set -o pipefail
+
           ./gradlew clean build --no-build-cache --stacktrace 2>&1 | tee build.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          EXIT_CODE=$?
+
+          echo $EXIT_CODE > build_exit.txt
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+          exit 0
 
       # ---------------------------
-      # ALWAYS UPLOAD LOGS (FIXED)
+      # READ BUILD RESULT (ROBUST FIX)
+      # ---------------------------
+      - name: Read build result safely
+        id: result
+        run: |
+          echo "exit_code=$(cat build_exit.txt)" >> $GITHUB_OUTPUT
+
+      # ---------------------------
+      # ALWAYS UPLOAD LOGS
       # ---------------------------
       - name: Upload build logs
         if: always()
@@ -49,22 +70,27 @@ jobs:
           path: build.log
 
       # ---------------------------
-      # CLAUDE ONLY ON FAILURE
+      # CLAUDE FIX STEP (ONLY ON FAILURE)
       # ---------------------------
       - name: Claude fixes the project
-        if: steps.build.outputs.exit_code != '0'
+        if: steps.result.outputs.exit_code != '0'
         uses: anthropics/claude-code-action@v1
         with:
           prompt: |
-            Fix all build errors in this Android Gradle project using the provided build logs.
-            Ensure the project compiles successfully with ./gradlew clean build.
+            Fix all build errors in this Android Gradle project.
+
+            Use build.log as reference.
+
+            Ensure the project successfully builds with:
+            ./gradlew clean build
+
             Do not introduce breaking changes.
 
       # ---------------------------
-      # CREATE PR ONLY IF FAILURE HAPPENED
+      # CREATE BRANCH + PR (RELIABLE)
       # ---------------------------
       - name: Create Pull Request
-        if: steps.build.outputs.exit_code != '0'
+        if: steps.result.outputs.exit_code != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -76,14 +102,15 @@ jobs:
           BRANCH="claude/fix-build-$(date +%s)"
 
           git checkout -b $BRANCH
+
           git add .
 
-          git commit -m "fix: automated build fixes by Claude" || echo "No changes"
+          git commit -m "fix: automated build fixes by Claude" || echo "No changes to commit"
 
           git push origin $BRANCH
 
           gh pr create \
             --title "🤖 Claude Auto Fix Build Errors" \
-            --body "Auto-generated PR after build failure. Logs are attached in workflow artifacts." \
+            --body "Auto-generated PR after build failure. Build logs are available in artifacts." \
             --head $BRANCH \
             --base main || true
