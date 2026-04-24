@@ -194,9 +194,9 @@ fun FtpClientScreen() {
         Spacer(Modifier.height(16.dp))
 
         LinearProgressIndicator(
-    progress = progress.coerceIn(0f, 1f),
-    modifier = Modifier.fillMaxWidth()
-)
+            progress = progress.coerceIn(0f, 1f),
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(16.dp))
 
         Text("Logs")
