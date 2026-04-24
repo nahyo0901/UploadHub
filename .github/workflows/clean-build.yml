@@ -1,18 +1,17 @@
-name: Clean Build (No Cache)
+name: Manual Clean Build (Truth Build)
 
 on:
   workflow_dispatch:
     inputs:
       java-version:
-        description: 'JDK version to use'
-        required: false
+        description: 'JDK version'
         default: '17'
       gradle-args:
-        description: 'Additional Gradle arguments'
-        required: false
+        description: 'Extra Gradle args'
         default: ''
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: clean-build
@@ -22,19 +21,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ github.event.inputs['java-version'] }}
+          java-version: ${{ github.event.inputs.java-version }}
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      - run: chmod +x ./gradlew
 
-      - name: Run clean build with no build cache
-        run: ./gradlew clean build --no-build-cache --stacktrace ${{ github.event.inputs['gradle-args'] }}
-        env:
-          JAVA_HOME: ${{ steps.setup-java.outputs.java-home || env.JAVA_HOME }}
+      - name: Clean build (no cache)
+        run: ./gradlew clean build --no-build-cache --stacktrace ${{ github.event.inputs.gradle-args }}
