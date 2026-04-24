@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 fun HomeScreen(
     onCatbox: () -> Unit,
     onLitterbox: () -> Unit,
+    onFtpServer: () -> Unit,
+    onFtpClient: () -> Unit,
     onServerToServerFtp: () -> Unit,
     onSettings: () -> Unit,
     onAbout: () -> Unit
