@@ -48,7 +48,7 @@ jobs:
       # CLAUDE FIX STEP
       # ---------------------------
       - name: Claude fixes the project
-        if: steps.build.outputs.exit_code != '1'
+        if: steps.build.outputs.exit_code != '0'
         uses: anthropics/claude-code-action@v1
         with:
           # (If supported by your version of the action)
