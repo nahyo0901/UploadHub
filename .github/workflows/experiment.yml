@@ -1,4 +1,4 @@
-name: Claude Fix Build Errors
+// name: Claude Fix Build Errors
 
 on:
   workflow_dispatch:
