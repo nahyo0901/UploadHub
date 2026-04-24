@@ -1,46 +1,72 @@
-name: Clean Build (No Cache)(Experiment)
+name: Clean Build + Claude Auto Fix (Manual)
 
 on:
   workflow_dispatch:
     inputs:
       java-version:
         description: 'JDK version to use'
-        required: false
         default: '17'
       gradle-args:
         description: 'Additional Gradle arguments'
-        required: false
         default: ''
 
 permissions:
-  contents: read
-  pull-requests: write
-  issues: write
-  id-token: write
+  contents: write        # Claude must commit fixes
+  pull-requests: write   # Claude opens PRs
+  issues: write          # Claude comments
+  id-token: write        # Required for Claude auth
 
 concurrency:
   group: clean-build
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-fix:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Claude Code Action Official
-        uses: anthropics/claude-code-action@v1
-
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ github.event.inputs['java-version'] }}
+          java-version: ${{ github.event.inputs.java-version }}
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Run clean build with no build cache
-        run: ./gradlew clean build --no-build-cache --stacktrace ${{ github.event.inputs['gradle-args'] }}
+      # -------------------------------------------------
+      # 1️⃣ Run build WITHOUT failing the job
+      # -------------------------------------------------
+      - name: Run Gradle clean build
+        id: gradle_build
+        run: |
+          set +e
+          ./gradlew clean build --no-build-cache --stacktrace ${{ github.event.inputs.gradle-args }} | tee build.log
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      # Save logs so Claude can read the failure
+      - name: Upload build logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build.log
+
+      # -------------------------------------------------
+      # 2️⃣ Claude fixes the project ONLY if build failed
+      # -------------------------------------------------
+      - name: Claude Auto Fix
+        if: steps.gradle_build.outputs.exit_code != 0
+        uses: anthropics/claude-code-action@v1
+        with:
+          track_progress: true
+          trigger_phrase: "@claude"
+
+      # -------------------------------------------------
+      # 3️⃣ Fail workflow at the end (after Claude runs)
+      # -------------------------------------------------
+      - name: Mark workflow failed if build failed
+        if: steps.gradle_build.outputs.exit_code != 0
+        run: exit 1
