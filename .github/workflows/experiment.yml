@@ -37,5 +37,5 @@ jobs:
           path: build.log
 
       - name: Claude fixes the project
-        if: steps.build.outputs.exit_code != 0
+        if: steps.build.outputs.exit_code != 1
         uses: anthropics/claude-code-action@v1
