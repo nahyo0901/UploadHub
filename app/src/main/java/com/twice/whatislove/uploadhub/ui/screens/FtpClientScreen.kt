@@ -10,41 +10,37 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.apache.commons.net.ftp.*
+import org.apache.commons.net.ftp.FTP
+import org.apache.commons.net.ftp.FTPClient
+import org.apache.commons.net.ftp.FTPReply
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-
-/* ============================================================
-   FTP CLIENT SCREEN
-   ============================================================ */
 
 @Composable
 fun FtpClientScreen() {
 
     val context = LocalContext.current
     val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
 
     val ftpClient = remember { FTPClient() }
 
-    // connection state
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("21") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    // transfer state
     var remotePath by remember { mutableStateOf("") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
 
-    // ui state
     var isConnected by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0f) }
     var logs by remember { mutableStateOf(listOf<String>()) }
@@ -58,11 +54,14 @@ fun FtpClientScreen() {
         ActivityResultContracts.GetContent()
     ) { uri ->
         selectedUri = uri
-        uri?.let { log("Selected: $uri") }
+        uri?.let { log("Selected file: $it") }
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scroll)
+            .padding(16.dp)
     ) {
 
         Text("FTP Client", style = MaterialTheme.typography.headlineMedium)
@@ -81,24 +80,43 @@ fun FtpClientScreen() {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 
-            Button(enabled = !isConnected && !busy, onClick = {
-                busy = true
-                log("Connecting...")
-                LaunchedEffect(Unit) {
-                    val ok = ftpConnect(ftpClient, host, port.toInt(), username, password, ::log)
-                    isConnected = ok
-                    busy = false
-                }
-            }) { Text("Connect") }
+            Button(
+                enabled = !isConnected && !busy,
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        log("Connecting...")
 
-            Button(enabled = isConnected && !busy, onClick = {
-                busy = true
-                LaunchedEffect(Unit) {
-                    ftpDisconnect(ftpClient, ::log)
-                    isConnected = false
-                    busy = false
+                        val ok = ftpConnect(
+                            ftpClient,
+                            host,
+                            port.toIntOrNull() ?: 21,
+                            username,
+                            password,
+                            ::log
+                        )
+
+                        isConnected = ok
+                        busy = false
+                    }
                 }
-            }) { Text("Disconnect") }
+            ) {
+                Text("Connect")
+            }
+
+            Button(
+                enabled = isConnected && !busy,
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        ftpDisconnect(ftpClient, ::log)
+                        isConnected = false
+                        busy = false
+                    }
+                }
+            ) {
+                Text("Disconnect")
+            }
         }
 
         Spacer(Modifier.height(20.dp))
@@ -110,54 +128,85 @@ fun FtpClientScreen() {
         OutlinedTextField(
             remotePath,
             { remotePath = it },
-            label = { Text("Remote Path (ex: /file.zip)") },
+            label = { Text("Remote Path (e.g. /file.zip)") },
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.height(8.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(enabled = isConnected && !busy, onClick = { picker.launch("*/*") }) {
+
+            Button(
+                enabled = isConnected && !busy,
+                onClick = { picker.launch("*/*") }
+            ) {
                 Text("Select File")
             }
 
             Button(
                 enabled = isConnected && selectedUri != null && !busy,
                 onClick = {
-                    busy = true
-                    progress = 0f
-                    LaunchedEffect(Unit) {
-                        ftpUpload(context, ftpClient, selectedUri!!, remotePath, ::log) {
+                    scope.launch {
+                        busy = true
+                        progress = 0f
+
+                        ftpUpload(
+                            context,
+                            ftpClient,
+                            selectedUri!!,
+                            remotePath,
+                            ::log
+                        ) {
                             progress = it
                         }
+
                         busy = false
                     }
                 }
-            ) { Text("Upload") }
+            ) {
+                Text("Upload")
+            }
 
             Button(
                 enabled = isConnected && !busy,
                 onClick = {
-                    busy = true
-                    progress = 0f
-                    LaunchedEffect(Unit) {
-                        ftpDownload(context, ftpClient, remotePath, ::log) {
+                    scope.launch {
+                        busy = true
+                        progress = 0f
+
+                        ftpDownload(
+                            context,
+                            ftpClient,
+                            remotePath,
+                            ::log
+                        ) {
                             progress = it
                         }
+
                         busy = false
                     }
                 }
-            ) { Text("Download") }
+            ) {
+                Text("Download")
+            }
         }
 
         Spacer(Modifier.height(16.dp))
-        LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         Spacer(Modifier.height(16.dp))
 
         Text("Logs")
+
         Column(
-            Modifier.fillMaxWidth().background(Color(0xFFEFEFEF)).padding(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFEFEFEF))
+                .padding(8.dp)
         ) {
             logs.forEach { Text(it) }
         }
@@ -192,7 +241,7 @@ suspend fun ftpConnect(
         ftp.enterLocalPassiveMode()
         ftp.setFileType(FTP.BINARY_FILE_TYPE)
 
-        log("Connected")
+        log("Connected successfully")
         true
     } catch (e: Exception) {
         log("Error: ${e.message}")
@@ -210,7 +259,8 @@ suspend fun ftpDisconnect(
             ftp.disconnect()
             log("Disconnected")
         }
-    } catch (_: Exception) {}
+    } catch (_: Exception) {
+    }
 }
 
 /* ============================================================
@@ -226,10 +276,12 @@ suspend fun ftpUpload(
     onProgress: (Float) -> Unit
 ) = withContext(Dispatchers.IO) {
 
-    val size = context.contentResolver.openFileDescriptor(uri, "r")!!.statSize.toFloat()
-    val input = context.contentResolver.openInputStream(uri)!!
+    val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
+    val size = descriptor?.statSize?.toFloat() ?: 0f
 
+    val input = context.contentResolver.openInputStream(uri)!!
     val output: OutputStream = ftp.storeFileStream(remotePath)
+
     val buffer = ByteArray(8192)
 
     var transferred = 0f
@@ -238,7 +290,7 @@ suspend fun ftpUpload(
     while (input.read(buffer).also { read = it } != -1) {
         output.write(buffer, 0, read)
         transferred += read
-        onProgress(transferred / size)
+        if (size > 0f) onProgress(transferred / size)
     }
 
     output.close()
@@ -259,7 +311,11 @@ suspend fun ftpDownload(
     val size = ftp.mlistFile(remotePath)?.size?.toFloat() ?: 0f
     val input: InputStream = ftp.retrieveFileStream(remotePath)
 
-    val file = File(context.getExternalFilesDir(null), remotePath.substringAfterLast("/"))
+    val file = File(
+        context.getExternalFilesDir(null),
+        remotePath.substringAfterLast("/")
+    )
+
     val output = file.outputStream()
 
     val buffer = ByteArray(8192)
@@ -269,7 +325,7 @@ suspend fun ftpDownload(
     while (input.read(buffer).also { read = it } != -1) {
         output.write(buffer, 0, read)
         transferred += read
-        if (size > 0) onProgress(transferred / size)
+        if (size > 0f) onProgress(transferred / size)
     }
 
     output.close()
