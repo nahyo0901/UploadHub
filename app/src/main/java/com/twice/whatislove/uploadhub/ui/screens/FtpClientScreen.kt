@@ -28,8 +28,8 @@ import java.io.OutputStream
 fun FtpClientScreen() {
 
     val context = LocalContext.current
-    val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val scroll = rememberScrollState()
 
     val ftpClient = remember { FTPClient() }
 
@@ -146,6 +146,8 @@ fun FtpClientScreen() {
             Button(
                 enabled = isConnected && selectedUri != null && !busy,
                 onClick = {
+                    val uri = selectedUri ?: return@Button
+
                     scope.launch {
                         busy = true
                         progress = 0f
@@ -153,7 +155,7 @@ fun FtpClientScreen() {
                         ftpUpload(
                             context,
                             ftpClient,
-                            selectedUri!!,
+                            uri,
                             remotePath,
                             ::log
                         ) {
@@ -193,11 +195,16 @@ fun FtpClientScreen() {
 
         Spacer(Modifier.height(16.dp))
 
+        /* ================= PROGRESS ================= */
+
         LinearProgressIndicator(
-            progress = progress.coerceIn(0f, 1f),
+            progress = { progress.coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth()
         )
+
         Spacer(Modifier.height(16.dp))
+
+        /* ================= LOGS ================= */
 
         Text("Logs")
 
@@ -258,12 +265,11 @@ suspend fun ftpDisconnect(
             ftp.disconnect()
             log("Disconnected")
         }
-    } catch (_: Exception) {
-    }
+    } catch (_: Exception) {}
 }
 
 /* ============================================================
-   FTP TRANSFER HELPERS
+   FTP UPLOAD
    ============================================================ */
 
 suspend fun ftpUpload(
@@ -277,12 +283,22 @@ suspend fun ftpUpload(
 
     val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
     val size = descriptor?.statSize?.toFloat() ?: 0f
+    descriptor?.close()
 
-    val input = context.contentResolver.openInputStream(uri)!!
-    val output: OutputStream = ftp.storeFileStream(remotePath)
+    val input = context.contentResolver.openInputStream(uri)
+    if (input == null) {
+        log("Failed to open file input")
+        return@withContext
+    }
+
+    val output = ftp.storeFileStream(remotePath)
+    if (output == null) {
+        input.close()
+        log("Failed to open FTP output stream")
+        return@withContext
+    }
 
     val buffer = ByteArray(8192)
-
     var transferred = 0f
     var read: Int
 
@@ -292,12 +308,16 @@ suspend fun ftpUpload(
         if (size > 0f) onProgress(transferred / size)
     }
 
-    output.close()
     input.close()
+    output.close()
     ftp.completePendingCommand()
 
     log("Upload completed")
 }
+
+/* ============================================================
+   FTP DOWNLOAD
+   ============================================================ */
 
 suspend fun ftpDownload(
     context: Context,
@@ -307,8 +327,11 @@ suspend fun ftpDownload(
     onProgress: (Float) -> Unit
 ) = withContext(Dispatchers.IO) {
 
-    val size = ftp.mlistFile(remotePath)?.size?.toFloat() ?: 0f
-    val input: InputStream = ftp.retrieveFileStream(remotePath)
+    val input = ftp.retrieveFileStream(remotePath)
+    if (input == null) {
+        log("Failed to open remote file")
+        return@withContext
+    }
 
     val file = File(
         context.getExternalFilesDir(null),
@@ -324,11 +347,11 @@ suspend fun ftpDownload(
     while (input.read(buffer).also { read = it } != -1) {
         output.write(buffer, 0, read)
         transferred += read
-        if (size > 0f) onProgress(transferred / size)
+        onProgress(transferred / (transferred + 1)) // safe fallback if size unknown
     }
 
-    output.close()
     input.close()
+    output.close()
     ftp.completePendingCommand()
 
     log("Downloaded → ${file.absolutePath}")
