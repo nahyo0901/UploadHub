@@ -9,6 +9,8 @@ import com.twice.whatislove.uploadhub.ui.home.HomeScreen
 import com.twice.whatislove.uploadhub.ui.screens.AboutScreen
 import com.twice.whatislove.uploadhub.ui.screens.CatboxScreen
 import com.twice.whatislove.uploadhub.ui.screens.LitterboxScreen
+import com.twice.whatislove.uploadhub.ui.screens.FtpClientScreen
+import com.twice.whatislove.uploadhub.ui.screens.FtpServerScreen
 import com.twice.whatislove.uploadhub.ui.screens.ServerToServerFtpScreen
 import com.twice.whatislove.uploadhub.ui.screens.SettingsScreen
 
@@ -26,6 +28,8 @@ fun UploadHubNavHost() {
             HomeScreen(
                 onCatbox = { navController.navigate("catbox") },
                 onLitterbox = { navController.navigate("litterbox") },
+                onFtpServer = { navController.navigate("ftpserver") },
+                onFtpClient = { navController.navigate("ftpclient") },
                 onServerToServerFtp = { navController.navigate("servertoserverftp") },
                 onSettings = { navController.navigate("settings") },
                 onAbout = { navController.navigate("about") }
