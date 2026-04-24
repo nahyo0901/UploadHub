@@ -35,6 +35,8 @@ fun UploadHubNavHost() {
         // Other screens
         composable("catbox") { CatboxScreen() }
         composable("litterbox") { LitterboxScreen() }
+		composable("ftpserver") { FtpServerScreen() }
+		composable("ftpclient") { FtpClientScreen() }
         composable("servertoserverftp") { ServerToServerFtpScreen() }
         composable("settings") { SettingsScreen() }
         composable("about") { AboutScreen() }
