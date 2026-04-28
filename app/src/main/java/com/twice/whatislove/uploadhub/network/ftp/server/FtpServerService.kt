@@ -101,9 +101,8 @@ class FtpServerService : Service() {
 
     private fun broadcastStatus(running: Boolean, log: String) {
         val intent = Intent(ACTION_STATUS).apply {
-            putExtra(EXTRA_RUNNING, running)
-            putExtra(EXTRA_LOG, log)
-        }
+            setPackage(packageName)
+}
         sendBroadcast(intent)
     }
 
