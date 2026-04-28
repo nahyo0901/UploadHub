@@ -68,7 +68,12 @@ fun FtpServerScreen() {
         }
 
         val filter = IntentFilter(FtpServerService.ACTION_STATUS)
-        context.registerReceiver(receiver, filter)
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+)
 
         onDispose { context.unregisterReceiver(receiver) }
     }
