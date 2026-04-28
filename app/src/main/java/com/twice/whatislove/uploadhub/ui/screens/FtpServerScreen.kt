@@ -20,7 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.twice.whatislove.uploadhub.network.ftp.server.FtpServerService
-import java.io.File
 
 @Composable
 fun FtpServerScreen() {
@@ -28,9 +27,9 @@ fun FtpServerScreen() {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    // ----------------------------
+    // =============================
     // UI STATE
-    // ----------------------------
+    // =============================
 
     var isRunning by remember { mutableStateOf(false) }
     var port by remember { mutableStateOf("2121") }
@@ -41,26 +40,40 @@ fun FtpServerScreen() {
         logs = logs + msg
     }
 
-    // ----------------------------
-    // Folder picker
-    // ----------------------------
+    // =============================
+    // Folder Picker (SAF)
+    // =============================
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         rootDirUri = uri
-        uri?.let { log("Selected root folder") }
+
+        uri?.let {
+            // Persist permission so service can access folder forever
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            log("Root folder selected")
+        }
     }
 
-    // ----------------------------
-    // Listen to Service broadcasts
-    // ----------------------------
+    // =============================
+    // Broadcast Receiver (Android 14 SAFE)
+    // =============================
 
     DisposableEffect(Unit) {
+
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 if (intent?.action == FtpServerService.ACTION_STATUS) {
-                    isRunning = intent.getBooleanExtra(FtpServerService.EXTRA_RUNNING, false)
+                    isRunning = intent.getBooleanExtra(
+                        FtpServerService.EXTRA_RUNNING,
+                        false
+                    )
+
                     val msg = intent.getStringExtra(FtpServerService.EXTRA_LOG) ?: ""
                     if (msg.isNotBlank()) log(msg)
                 }
@@ -68,19 +81,22 @@ fun FtpServerScreen() {
         }
 
         val filter = IntentFilter(FtpServerService.ACTION_STATUS)
+
         ContextCompat.registerReceiver(
             context,
             receiver,
             filter,
             ContextCompat.RECEIVER_NOT_EXPORTED
-)
+        )
 
-        onDispose { context.unregisterReceiver(receiver) }
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
     }
 
-    // ----------------------------
+    // =============================
     // UI
-    // ----------------------------
+    // =============================
 
     Column(
         modifier = Modifier
@@ -123,11 +139,10 @@ fun FtpServerScreen() {
             Button(
                 enabled = !isRunning,
                 onClick = {
-                    val rootFile = rootDirUri?.let { File(it.path ?: "") }
                     FtpServerService.startService(
                         context,
                         port.toIntOrNull() ?: 2121,
-                        rootFile
+                        rootDirUri?.toString() // ✅ SAF FIX
                     )
                 }
             ) { Text("Start Server") }
