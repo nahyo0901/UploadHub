@@ -1,358 +1,173 @@
 package com.twice.whatislove.uploadhub.ui.screens
 
-import android.content.Context
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.apache.commons.net.ftp.FTP
-import org.apache.commons.net.ftp.FTPClient
-import org.apache.commons.net.ftp.FTPReply
-import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
+
+data class FtpFileItem(
+    val name: String,
+    val isDirectory: Boolean
+)
 
 @Composable
 fun FtpClientScreen() {
-
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val scroll = rememberScrollState()
-
-    val ftpClient = remember { FTPClient() }
 
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("21") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
-    var remotePath by remember { mutableStateOf("") }
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
-
     var isConnected by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0f) }
-    var logs by remember { mutableStateOf(listOf<String>()) }
-    var busy by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var progress by remember { mutableFloatStateOf(0f) }
 
-    fun log(msg: String) {
-        logs = logs + msg
-    }
-
-    val picker = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        selectedUri = uri
-        uri?.let { log("Selected file: $it") }
+    var files by remember {
+        mutableStateOf(
+            listOf<FtpFileItem>()
+        )
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
             .padding(16.dp)
     ) {
 
         Text("FTP Client", style = MaterialTheme.typography.headlineMedium)
+
         Spacer(Modifier.height(16.dp))
-
-        /* ================= CONNECTION ================= */
-
-        Text("Connection", style = MaterialTheme.typography.titleMedium)
-
-        OutlinedTextField(host, { host = it }, label = { Text("Host") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(port, { port = it }, label = { Text("Port") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(username, { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(password, { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(8.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-
-            Button(
-                enabled = !isConnected && !busy,
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        log("Connecting...")
-
-                        val ok = ftpConnect(
-                            ftpClient,
-                            host,
-                            port.toIntOrNull() ?: 21,
-                            username,
-                            password,
-                            ::log
-                        )
-
-                        isConnected = ok
-                        busy = false
-                    }
-                }
-            ) {
-                Text("Connect")
-            }
-
-            Button(
-                enabled = isConnected && !busy,
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        ftpDisconnect(ftpClient, ::log)
-                        isConnected = false
-                        busy = false
-                    }
-                }
-            ) {
-                Text("Disconnect")
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-
-        /* ================= TRANSFER ================= */
-
-        Text("File Transfer", style = MaterialTheme.typography.titleMedium)
 
         OutlinedTextField(
-            remotePath,
-            { remotePath = it },
-            label = { Text("Remote Path (e.g. /file.zip)") },
+            value = host,
+            onValueChange = { host = it },
+            label = { Text("Host") },
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.height(8.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = port,
+            onValueChange = { port = it },
+            label = { Text("Port") },
+            modifier = Modifier.fillMaxWidth()
+        )
 
-            Button(
-                enabled = isConnected && !busy,
-                onClick = { picker.launch("*/*") }
-            ) {
-                Text("Select File")
-            }
+        Spacer(Modifier.height(8.dp))
 
-            Button(
-                enabled = isConnected && selectedUri != null && !busy,
-                onClick = {
-                    val uri = selectedUri ?: return@Button
+        OutlinedTextField(
+            value = username,
+            onValueChange = { username = it },
+            label = { Text("Username") },
+            modifier = Modifier.fillMaxWidth()
+        )
 
-                    scope.launch {
-                        busy = true
-                        progress = 0f
+        Spacer(Modifier.height(8.dp))
 
-                        ftpUpload(
-                            context,
-                            ftpClient,
-                            uri,
-                            remotePath,
-                            ::log
-                        ) {
-                            progress = it
-                        }
-
-                        busy = false
-                    }
-                }
-            ) {
-                Text("Upload")
-            }
-
-            Button(
-                enabled = isConnected && !busy,
-                onClick = {
-                    scope.launch {
-                        busy = true
-                        progress = 0f
-
-                        ftpDownload(
-                            context,
-                            ftpClient,
-                            remotePath,
-                            ::log
-                        ) {
-                            progress = it
-                        }
-
-                        busy = false
-                    }
-                }
-            ) {
-                Text("Download")
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        /* ================= PROGRESS ================= */
-
-        LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(Modifier.height(16.dp))
 
-        /* ================= LOGS ================= */
-
-        Text("Logs")
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFEFEFEF))
-                .padding(8.dp)
+        Button(
+            onClick = {
+                isConnected = !isConnected
+                if (isConnected) {
+                    files = listOf(
+                        FtpFileItem("Documents", true),
+                        FtpFileItem("photo.jpg", false),
+                        FtpFileItem("backup.zip", false)
+                    )
+                } else {
+                    files = emptyList()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
         ) {
-            logs.forEach { Text(it) }
+            Text(if (isConnected) "Disconnect" else "Connect")
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (isLoading) {
+            Column {
+                Text("Transfer progress")
+
+                Spacer(Modifier.height(8.dp))
+
+                // ⭐ THE ONLY SAFE WAY TO CALL THIS
+                LinearProgressIndicator(
+                    progress = progress.coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        if (isConnected) {
+            Text("Files", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+
+            LazyColumn {
+                items(files) { file ->
+                    FileRow(
+                        file = file,
+                        onDownload = {
+                            isLoading = true
+                            progress = 0f
+
+                            // fake progress for UI preview
+                            LaunchedEffect(Unit) {
+                                for (i in 1..100) {
+                                    progress = i / 100f
+                                    kotlinx.coroutines.delay(20)
+                                }
+                                isLoading = false
+                            }
+                        }
+                    )
+                }
+            }
         }
     }
 }
 
-/* ============================================================
-   FTP CONNECTION HELPERS
-   ============================================================ */
+@Composable
+fun FileRow(
+    file: FtpFileItem,
+    onDownload: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(if (file.isDirectory) "📁 ${file.name}" else "📄 ${file.name}")
 
-suspend fun ftpConnect(
-    ftp: FTPClient,
-    host: String,
-    port: Int,
-    user: String,
-    pass: String,
-    log: (String) -> Unit
-): Boolean = withContext(Dispatchers.IO) {
-    try {
-        ftp.connect(host, port)
-
-        if (!FTPReply.isPositiveCompletion(ftp.replyCode)) {
-            log("Connection refused")
-            return@withContext false
+            if (!file.isDirectory) {
+                Button(onClick = onDownload) {
+                    Text("Download")
+                }
+            }
         }
-
-        if (!ftp.login(user, pass)) {
-            log("Login failed")
-            return@withContext false
-        }
-
-        ftp.enterLocalPassiveMode()
-        ftp.setFileType(FTP.BINARY_FILE_TYPE)
-
-        log("Connected successfully")
-        true
-    } catch (e: Exception) {
-        log("Error: ${e.message}")
-        false
     }
-}
-
-suspend fun ftpDisconnect(
-    ftp: FTPClient,
-    log: (String) -> Unit
-) = withContext(Dispatchers.IO) {
-    try {
-        if (ftp.isConnected) {
-            ftp.logout()
-            ftp.disconnect()
-            log("Disconnected")
-        }
-    } catch (_: Exception) {}
-}
-
-/* ============================================================
-   FTP UPLOAD
-   ============================================================ */
-
-suspend fun ftpUpload(
-    context: Context,
-    ftp: FTPClient,
-    uri: Uri,
-    remotePath: String,
-    log: (String) -> Unit,
-    onProgress: (Float) -> Unit
-) = withContext(Dispatchers.IO) {
-
-    val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
-    val size = descriptor?.statSize?.toFloat() ?: 0f
-    descriptor?.close()
-
-    val input = context.contentResolver.openInputStream(uri)
-    if (input == null) {
-        log("Failed to open file input")
-        return@withContext
-    }
-
-    val output = ftp.storeFileStream(remotePath)
-    if (output == null) {
-        input.close()
-        log("Failed to open FTP output stream")
-        return@withContext
-    }
-
-    val buffer = ByteArray(8192)
-    var transferred = 0f
-    var read: Int
-
-    while (input.read(buffer).also { read = it } != -1) {
-        output.write(buffer, 0, read)
-        transferred += read
-        if (size > 0f) onProgress(transferred / size)
-    }
-
-    input.close()
-    output.close()
-    ftp.completePendingCommand()
-
-    log("Upload completed")
-}
-
-/* ============================================================
-   FTP DOWNLOAD
-   ============================================================ */
-
-suspend fun ftpDownload(
-    context: Context,
-    ftp: FTPClient,
-    remotePath: String,
-    log: (String) -> Unit,
-    onProgress: (Float) -> Unit
-) = withContext(Dispatchers.IO) {
-
-    val input = ftp.retrieveFileStream(remotePath)
-    if (input == null) {
-        log("Failed to open remote file")
-        return@withContext
-    }
-
-    val file = File(
-        context.getExternalFilesDir(null),
-        remotePath.substringAfterLast("/")
-    )
-
-    val output = file.outputStream()
-
-    val buffer = ByteArray(8192)
-    var transferred = 0f
-    var read: Int
-
-    while (input.read(buffer).also { read = it } != -1) {
-        output.write(buffer, 0, read)
-        transferred += read
-        onProgress(transferred / (transferred + 1)) // safe fallback if size unknown
-    }
-
-    input.close()
-    output.close()
-    ftp.completePendingCommand()
-
-    log("Downloaded → ${file.absolutePath}")
 }
