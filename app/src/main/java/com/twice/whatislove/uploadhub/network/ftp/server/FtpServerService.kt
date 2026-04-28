@@ -100,8 +100,11 @@ class FtpServerService : Service() {
     // =========================
 
     private fun broadcastStatus(running: Boolean, log: String) {
-    val intent = Intent(ACTION_STATUS).apply {
-        setPackage(packageName) // keep scoped to app
+    val intent = Intent().apply {
+        setClassName(
+            packageName,
+            "${packageName}.network.ftp.server.FtpServerReceiver"
+        )
 
         putExtra(EXTRA_RUNNING, running)
         putExtra(EXTRA_LOG, log)
