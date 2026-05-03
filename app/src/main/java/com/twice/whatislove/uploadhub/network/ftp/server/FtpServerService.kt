@@ -3,7 +3,6 @@ package com.twice.whatislove.uploadhub.network.ftp.server
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -14,11 +13,10 @@ import java.io.File
 class FtpServerService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var isRunning = false
 
-    // =========================
-    // Lifecycle
-    // =========================
+    private var isRunning = false
+    private var currentPort = DEFAULT_PORT
+    private var currentRootDir: File? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -28,11 +26,10 @@ class FtpServerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
         when (intent?.action) {
-
             ACTION_START -> startServer(intent)
             ACTION_STOP -> stopServer()
-
-            else -> startServer(intent) // backward compatibility
+            ACTION_STATUS -> broadcastStatus(isRunning, "Status requested")
+            else -> startServer(intent)
         }
 
         return START_STICKY
@@ -47,35 +44,38 @@ class FtpServerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     // =========================
-    // Start / Stop Logic
+    // Start / Stop
     // =========================
 
     private fun startServer(intent: Intent?) {
         if (isRunning) return
 
-        startForeground(NOTIFICATION_ID, buildNotification(false))
-        broadcastStatus(false, "Starting FTP server…")
-
-        val port = intent?.getIntExtra(EXTRA_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
+        currentPort = intent?.getIntExtra(EXTRA_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
         val rootDirPath = intent?.getStringExtra(EXTRA_ROOT_DIR)
 
-        val rootDir = if (!rootDirPath.isNullOrBlank()) {
+        currentRootDir = if (!rootDirPath.isNullOrBlank()) {
             File(rootDirPath).apply { if (!exists()) mkdirs() }
         } else {
             File(filesDir, "ftp_root").apply { if (!exists()) mkdirs() }
         }
 
+        startForeground(NOTIFICATION_ID, buildNotification(false))
+        broadcastStatus(false, "Starting FTP server…")
+
         serviceScope.launch {
-            try {
-                ServerLauncher.start(port, rootDir)
+            val result = ServerLauncher.startBlocking(currentPort, currentRootDir!!)
 
-                isRunning = true
-                updateNotification(true)
-                broadcastStatus(true, "FTP Server running on port $port")
+            when (result) {
+                is ServerLauncher.StartResult.Success -> {
+                    isRunning = true
+                    updateNotification(true)
+                    broadcastStatus(true, "FTP running on port ${result.port}")
+                }
 
-            } catch (t: Throwable) {
-                broadcastStatus(false, "Server failed: ${t.message}")
-                stopSelf()
+                is ServerLauncher.StartResult.Error -> {
+                    broadcastStatus(false, "Server failed: ${result.message}")
+                    stopSelf()
+                }
             }
         }
     }
@@ -87,31 +87,31 @@ class FtpServerService : Service() {
 
     private fun stopServerInternal() {
         try {
-            if (isRunning) {
+            if (ServerLauncher.isRunning()) {
                 ServerLauncher.stop()
-                broadcastStatus(false, "FTP Server stopped")
             }
-        } catch (_: Throwable) {}
-        isRunning = false
+        } catch (_: Throwable) {
+        } finally {
+            isRunning = false
+            broadcastStatus(false, "FTP Server stopped")
+        }
     }
 
     // =========================
-    // Broadcast to UI
+    // Broadcast
     // =========================
 
     private fun broadcastStatus(running: Boolean, log: String) {
-    val intent = Intent().apply {
-        setClassName(
-            packageName,
-            "${packageName}.network.ftp.server.FtpServerReceiver"
-        )
-
-        putExtra(EXTRA_RUNNING, running)
-        putExtra(EXTRA_LOG, log)
+        val intent = Intent().apply {
+            setClassName(
+                packageName,
+                "${packageName}.network.ftp.server.FtpServerReceiver"
+            )
+            putExtra(EXTRA_RUNNING, running)
+            putExtra(EXTRA_LOG, log)
+        }
+        sendBroadcast(intent)
     }
-
-    sendBroadcast(intent)
-}
 
     // =========================
     // Notification
@@ -124,7 +124,7 @@ class FtpServerService : Service() {
 
     private fun buildNotification(isRunning: Boolean): Notification {
         val title = if (isRunning) "FTP Server running" else "Starting FTP Server"
-        val text = if (isRunning) "Listening on port $DEFAULT_PORT" else "Preparing server"
+        val text = if (isRunning) "Listening on port $currentPort" else "Preparing server"
 
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         val pendingIntent = PendingIntent.getActivity(
@@ -156,7 +156,7 @@ class FtpServerService : Service() {
     }
 
     // =========================
-    // Companion / API for UI
+    // Companion
     // =========================
 
     companion object {
@@ -165,16 +165,12 @@ class FtpServerService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val DEFAULT_PORT = 2121
 
-        // Actions
         const val ACTION_START = "ftp_server_start"
         const val ACTION_STOP = "ftp_server_stop"
         const val ACTION_STATUS = "ftp_server_status"
 
-        // Broadcast extras
         const val EXTRA_RUNNING = "running"
         const val EXTRA_LOG = "log"
-
-        // Existing extras
         const val EXTRA_PORT = "EXTRA_PORT"
         const val EXTRA_ROOT_DIR = "EXTRA_ROOT_DIR"
 
@@ -191,7 +187,14 @@ class FtpServerService : Service() {
             val intent = Intent(context, FtpServerService::class.java).apply {
                 action = ACTION_STOP
             }
-            context.startService(intent)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun requestStatus(context: Context) {
+            val intent = Intent(context, FtpServerService::class.java).apply {
+                action = ACTION_STATUS
+            }
+            ContextCompat.startForegroundService(context, intent)
         }
     }
 }
