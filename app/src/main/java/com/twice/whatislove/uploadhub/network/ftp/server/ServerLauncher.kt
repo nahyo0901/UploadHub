@@ -1,47 +1,57 @@
 package com.twice.whatislove.uploadhub.network.ftp.server
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import java.io.File
 
 object ServerLauncher {
+
     private var server: Server? = null
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    sealed class StartResult {
+        data class Success(val port: Int) : StartResult()
+        data class Error(val message: String) : StartResult()
+    }
 
     /**
-     * Start the FTP server.
-     *
-     * @param port port to bind (default 2121)
-     * @param rootDir directory used as FTP root (app filesDir or external dir)
+     * Blocking start.
+     * This call will BLOCK until the server stops or throws.
      */
-    fun start(port: Int = 2121, rootDir: File) {
-        if (server != null) return
-        val socketProvider = DefaultSocketProvider(port = port)
-        val fsAdapter = SimpleFileSystemAdapter(rootDir)
-        server = Server(socketProvider = socketProvider, fileSystem = fsAdapter)
-        scope.launch {
-            try {
-                server?.start()
-            } catch (t: Throwable) {
-                t.printStackTrace()
-                stop()
-            }
+    fun startBlocking(port: Int, rootDir: File): StartResult {
+        if (server != null) {
+            return StartResult.Error("Server already running")
+        }
+
+        return try {
+            val socketProvider = DefaultSocketProvider(port = port)
+            val fsAdapter = SimpleFileSystemAdapter(rootDir)
+
+            val newServer = Server(
+                socketProvider = socketProvider,
+                fileSystem = fsAdapter
+            )
+
+            server = newServer
+
+            // IMPORTANT: this blocks
+            newServer.start()
+
+            // If start() returns normally it means it stopped
+            server = null
+            StartResult.Error("Server stopped unexpectedly")
+
+        } catch (t: Throwable) {
+            server = null
+            StartResult.Error(t.message ?: "Unknown error")
         }
     }
 
-    /** Stop the running server if any. Safe to call multiple times. */
     fun stop() {
         try {
             server?.stop()
-        } catch (t: Throwable) {
-            t.printStackTrace()
+        } catch (_: Throwable) {
         } finally {
             server = null
         }
     }
 
-    /** Return whether the server appears to be running. */
     fun isRunning(): Boolean = server != null
 }
