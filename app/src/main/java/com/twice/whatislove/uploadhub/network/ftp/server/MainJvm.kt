@@ -33,7 +33,18 @@ fun main(args: Array<String>) {
     println("  root = ${rootDir.absolutePath}")
 
     // Start server via ServerLauncher so the same API is used on Android and JVM tests.
-    ServerLauncher.start(port = port, rootDir = rootDir)
+    Thread {
+        val result = ServerLauncher.startBlocking(port = port, rootDir = rootDir)
+        when (result) {
+            is ServerLauncher.StartResult.Success -> {
+                println("FTP Server started successfully on port ${result.port}")
+            }
+            is ServerLauncher.StartResult.Error -> {
+                System.err.println("Failed to start FTP server: ${result.message}")
+                exitProcess(1)
+            }
+        }
+    }.start()
 
     // Add shutdown hook to stop server cleanly.
     Runtime.getRuntime().addShutdownHook(Thread {
