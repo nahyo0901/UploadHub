@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.twice.whatislove.uploadhub.network.ftp.server.FtpServerService
+import java.io.File
 
 @Composable
 fun FtpServerScreen() {
@@ -142,7 +143,7 @@ fun FtpServerScreen() {
                     FtpServerService.startService(
                         context,
                         port.toIntOrNull() ?: 2121,
-                        rootDirUri?.toString() // ✅ SAF FIX
+                        rootDirUri?.let { uri -> File(uri.toString()) }
                     )
                 }
             ) { Text("Start Server") }
