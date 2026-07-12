@@ -9,6 +9,8 @@
 
     <!-- Required on Android 13+ for posting notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
 
     <application
         android:label="UploadHub"
