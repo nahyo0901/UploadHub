@@ -1,0 +1,52 @@
+package dev.nahyo0901.uploadhub.ui.home
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+@Composable
+fun HomeScreen(
+    onCatbox: () -> Unit,
+    onLitterbox: () -> Unit,
+    onFtpServer: () -> Unit,
+    onFtpClient: () -> Unit,
+    onServerToServerFtp: () -> Unit,
+    onSettings: () -> Unit,
+    onAbout: () -> Unit
+) {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text("UploadHub")
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Button(onClick = onCatbox) { Text("Open Catbox") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onLitterbox) { Text("Open Litterbox") }
+            Spacer(modifier = Modifier.height(8.dp))
+			
+			Button(onClick = onFtpServer) { Text("Open FTP Server") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+			Button(onClick = onFtpClient) { Text("Open FTP Client") }
+            Spacer(modifier = Modifier.height(8.dp))
+			
+            Button(onClick = onServerToServerFtp) { Text("Server to Server FTP") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onSettings) { Text("Settings") }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(onClick = onAbout) { Text("About") }
+        }
+    }
+}
